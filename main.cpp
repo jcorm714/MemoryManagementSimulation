@@ -1,7 +1,10 @@
 #include<iostream>
 #include<cstdlib>
 #include<memory>
-#include<list>
+#include<vector>
+#include<map>
+#include<stdlib.h>
+#include<time.h>
 
 
 #define PAGE_STREAM_SIZE  100
@@ -20,11 +23,12 @@ class Row {
 
 
 int determineFurthestPage(unsigned int pageStream[], std::shared_ptr<Row>&, int pageStreamStart, int pageStreamLength, int activePagesLength);
-int findFIFOPage(std::list<std::shared_ptr<Row>>*, std::shared_ptr<Row>&, int pageStreamLength ,int activePagesLength);
+int findFIFOPage(std::vector<std::shared_ptr<Row>>&, int activePagesLength);
+int findLFUPage(std::map<int, int>, std::shared_ptr<Row>&, int rowLength);
 void displayPageFrame(std::shared_ptr<Row>& currRow, int page, int rowLength);
 int findEmptySlot(std::shared_ptr<Row>& row, int length);
 bool pageInMemory(int page, std::shared_ptr<Row>&,  int length);
-int findPageInProcessed(std::list<std::shared_ptr<Row>>*, int page, int rowSize);
+int findPageInProcessed(std::vector<std::shared_ptr<Row>>&, int page, int rowSize);
 
 int main(){
 
@@ -45,13 +49,25 @@ int main(){
 
     //create allocate enough space in the array for 
     //for each page to be run in the array
-    std::list<std::shared_ptr<Row>>* pageFrames = new std::list<std::shared_ptr<Row>>();
+    std::vector<std::shared_ptr<Row>>* pageFramesBelady = new std::vector<std::shared_ptr<Row>>();
+    std::vector<std::shared_ptr<Row>>* pageFramesFIFO = new std::vector<std::shared_ptr<Row>>();
+    std::vector<std::shared_ptr<Row>>* pageFramesLFU = new std::vector<std::shared_ptr<Row>>();
+    std::map<int, int> mapMFU;
+
+
+    
     
     //initialize empty row
-    std::shared_ptr<Row> r = std::shared_ptr<Row>(new Row(numPages));
-    pageFrames->push_back(r);
+    std::shared_ptr<Row> startBelady = std::shared_ptr<Row>(new Row(numPages));
+    std::shared_ptr<Row> startFIFO = std::shared_ptr<Row>(new Row(numPages));
+    std::shared_ptr<Row> startLFU = std::shared_ptr<Row>(new Row(numPages));
+    pageFramesBelady->push_back(startBelady);
+    pageFramesFIFO->push_back(startFIFO);
+    pageFramesLFU->push_back(startLFU);
 
     //initialize random stream
+    srand(time(NULL));
+    
     for(int i =0; i < PAGE_STREAM_SIZE; i++){
     
        addrs[i] = rand() % 32768;
@@ -61,43 +77,144 @@ int main(){
        pageStream[i] = pNum;
     }
    
-    int currentRow = 0;
-    int pageFaults = 0;
+    int pageFaultsBelady = 0;
+    int pageFaultsFIFO = 0;
+    int pageFaultsLFU = 0;
+
+    //Run through Belady's optimal algorithm first 
+
+    std::cout << "**********************************" << '\n';
+    std::cout << "*        Belady's Optimal        *" << '\n';
+    std::cout << "**********************************" << '\n';
+   
     for (int i = 0; i < PAGE_STREAM_SIZE; i++) {
 
         //only switch pages if the page is not in memory
-        if (pageInMemory(pageStream[i], pageFrames->back(), numPages)) {
-            displayPageFrame(pageFrames->back(), pageStream[i], numPages);
+        if (pageInMemory(pageStream[i], pageFramesBelady->back(), numPages)) {
+            displayPageFrame(pageFramesBelady->back(), pageStream[i], numPages);
 
             continue;
         }
 
 
-        int idx = findEmptySlot(pageFrames->back(), numPages);
+        int idx = findEmptySlot(pageFramesBelady->back(), numPages);
         if (idx >= 0) {
-            pageFrames->back()->row[idx] = pageStream[i];
-            pageFaults++;
+            pageFramesBelady->back()->row[idx] = pageStream[i];
+            pageFaultsBelady++;
 
         }
         else {
            
-            int frameToSwitch = determineFurthestPage(pageStream, pageFrames->back(), i, PAGE_STREAM_SIZE, numPages);
-            pageFrames->back()->row[frameToSwitch] = pageStream[i];
-            pageFaults++;
+            int frameToSwitch = determineFurthestPage(pageStream, pageFramesBelady->back(), i, PAGE_STREAM_SIZE, numPages);
+            pageFramesBelady->back()->row[frameToSwitch] = pageStream[i];
+            pageFaultsBelady++;
 
         }
       
         std::shared_ptr<Row> newRow = std::shared_ptr<Row>(new Row(numPages));
         for (int i = 0; i < numPages; i++) {
-            newRow->row[i] = pageFrames->back()->row[i];
+            newRow->row[i] = pageFramesBelady->back()->row[i];
         }
-        pageFrames->push_back(newRow);
+        pageFramesBelady->push_back(newRow);
      
-        displayPageFrame(pageFrames->back(), pageStream[i], numPages);
+        displayPageFrame(pageFramesBelady->back(), pageStream[i], numPages);
       
     }
 
-    std::cout << "Number of page faults for Belady: " << pageFaults;
+    
+    std::cout << "**********************************" << '\n';
+    std::cout << "*              FIFO              *" << '\n';
+    std::cout << "**********************************" << '\n';
+
+    for (int i = 0; i < PAGE_STREAM_SIZE; i++) {
+
+        //only switch pages if the page is not in memory
+        if (pageInMemory(pageStream[i], pageFramesFIFO->back(), numPages)) {
+            displayPageFrame(pageFramesFIFO->back(), pageStream[i], numPages);
+
+            continue;
+        }
+
+
+        int idx = findEmptySlot(pageFramesFIFO->back(), numPages);
+        if (idx >= 0) {
+            pageFramesFIFO->back()->row[idx] = pageStream[i];
+            pageFaultsFIFO++;
+
+        }
+        else {
+
+            int frameToSwitch = findFIFOPage(*pageFramesFIFO, numPages);
+            pageFramesFIFO->back()->row[frameToSwitch] = pageStream[i];
+            pageFaultsFIFO++;
+
+        }
+
+        std::shared_ptr<Row> newRow = std::shared_ptr<Row>(new Row(numPages));
+        for (int i = 0; i < numPages; i++) {
+            newRow->row[i] = pageFramesFIFO->back()->row[i];
+        }
+        pageFramesFIFO->push_back(newRow);
+
+        displayPageFrame(pageFramesFIFO->back(), pageStream[i], numPages);
+
+    }
+
+    std::cout << "**********************************" << '\n';
+    std::cout << "*              LFU               *" << '\n';
+    std::cout << "**********************************" << '\n';
+    for (int i = 0; i < PAGE_STREAM_SIZE; i++) {
+
+        //only switch pages if the page is not in memory
+        if (pageInMemory(pageStream[i], pageFramesLFU->back(), numPages)) {
+            displayPageFrame(pageFramesLFU->back(), pageStream[i], numPages);
+            if (mapMFU[pageStream[i]] != NULL) {
+                mapMFU[pageStream[i]] += 1;
+            }
+            continue;
+        }
+
+
+        int idx = findEmptySlot(pageFramesLFU->back(), numPages);
+        if (idx >= 0) {
+            pageFramesLFU->back()->row[idx] = pageStream[i];
+            pageFaultsLFU++;
+            if (mapMFU[pageStream[i]] != NULL) {
+                mapMFU[pageStream[i]] += 1;
+            }
+            else {
+                mapMFU[pageStream[i]] = 1;
+            }
+        }
+        else {
+
+            int frameToSwitch = findLFUPage(mapMFU, pageFramesLFU->back(), numPages);
+            pageFramesLFU->back()->row[frameToSwitch] = pageStream[i];
+            pageFramesLFU++;
+
+            if (mapMFU[pageStream[i]] != NULL) {
+                mapMFU[pageStream[i]] += 1;
+            }
+            else {
+                mapMFU[pageStream[i]] = 1;
+            }
+
+        }
+
+        std::shared_ptr<Row> newRow = std::shared_ptr<Row>(new Row(numPages));
+        for (int i = 0; i < numPages; i++) {
+            newRow->row[i] = pageFramesFIFO->back()->row[i];
+        }
+        pageFramesFIFO->push_back(newRow);
+
+        displayPageFrame(pageFramesFIFO->back(), pageStream[i], numPages);
+
+    }
+
+
+    std::cout << "Number of page faults for Belady's optimal: " << pageFaultsBelady << '\n';
+    std::cout << "Number of page faults for FIFO: " << pageFaultsFIFO << '\n';
+    std::cout << "Number of page faults for LFU: " << pageFaultsLFU << '\n';
 
 
     return 0;
@@ -131,14 +248,14 @@ int determineFurthestPage(unsigned int pageStream[], std::shared_ptr<Row>& activ
 }
 
 //finds the given page which has been added to the pageFrames first
-int findFIFOPage(std::list<std::shared_ptr<Row>>* pageFrames, int pageStreamLength, int activePagesLength)
+int findFIFOPage(std::vector<std::shared_ptr<Row>>& pageFrames, int activePagesLength)
 {
 
     int greatestDistance = -1;
     int oldestPageIndex = -1;
     int count = 0;
 
-    std::shared_ptr<Row> top = pageFrames->back();
+    std::shared_ptr<Row> top = pageFrames.back();
     for (int i = 0; i < activePagesLength; i++) {
         int currentPage = top->row[i];
         int dist = findPageInProcessed(pageFrames, currentPage, activePagesLength);
@@ -159,10 +276,24 @@ int findFIFOPage(std::list<std::shared_ptr<Row>>* pageFrames, int pageStreamLeng
     
 }
 
+int findLFUPage(std::map<int, int> m, std::shared_ptr<Row>& row, int rowLength)
+{
+    int leastUses = INT_MAX;
+    int leastUsedIdx = -1;
+    for (int i = 0; i < rowLength; i++) {
+        int frame = row->row[i];
+        if (m[frame] != NULL && m[frame] < leastUses) {
+            leastUses = m[frame];
+            leastUsedIdx = i;
+        }
+    }
+    return leastUsedIdx;
+}
+
 
 void displayPageFrame(std::shared_ptr<Row>& currRow, int page, int rowLength){
 
-    std::cout << page << "  ";
+    std::cout << page << "\t\t";
     
     for (int i = 0; i < rowLength; i++) {
         if (currRow->row[i] == NOTHING_IN_FRAME) {
@@ -201,13 +332,12 @@ bool pageInMemory(int page , std::shared_ptr<Row>& row, int length)
     return false;
 }
 
-int findPageInProcessed(std::list<std::shared_ptr<Row>>* pFrames, int page, int rowSize)
+int findPageInProcessed(std::vector<std::shared_ptr<Row>>& pFrames, int page, int rowSize)
 {
     int dist = 0;
-    for (auto j = pFrames->cend(); j != pFrames->cbegin(); --j) {
-        
+    for (int j = rowSize -1; j < 0; j--){
         for (int i = 0; i < rowSize; i++) {
-            if (page == (*j)->row[i]) {
+            if (page == pFrames[j]->row[i]) {
                 return dist;
             }
         }
