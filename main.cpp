@@ -1,7 +1,8 @@
 #include<iostream>
 #include<cstdlib>
-#include<vector>
 #include<memory>
+#include<list>
+
 
 #define PAGE_STREAM_SIZE  100
 #define NOTHING_IN_FRAME  17
@@ -19,9 +20,11 @@ class Row {
 
 
 int determineFurthestPage(unsigned int pageStream[], std::shared_ptr<Row>&, int pageStreamStart, int pageStreamLength, int activePagesLength);
+int findFIFOPage(std::list<std::shared_ptr<Row>>*, std::shared_ptr<Row>&, int pageStreamLength ,int activePagesLength);
 void displayPageFrame(std::shared_ptr<Row>& currRow, int page, int rowLength);
 int findEmptySlot(std::shared_ptr<Row>& row, int length);
 bool pageInMemory(int page, std::shared_ptr<Row>&,  int length);
+int findPageInProcessed(std::list<std::shared_ptr<Row>>*, int page, int rowSize);
 
 int main(){
 
@@ -42,11 +45,11 @@ int main(){
 
     //create allocate enough space in the array for 
     //for each page to be run in the array
-    std::vector<std::shared_ptr<Row>> pageFrames;
+    std::list<std::shared_ptr<Row>>* pageFrames = new std::list<std::shared_ptr<Row>>();
     
     //initialize empty row
     std::shared_ptr<Row> r = std::shared_ptr<Row>(new Row(numPages));
-    pageFrames.push_back(r);
+    pageFrames->push_back(r);
 
     //initialize random stream
     for(int i =0; i < PAGE_STREAM_SIZE; i++){
@@ -63,43 +66,43 @@ int main(){
     for (int i = 0; i < PAGE_STREAM_SIZE; i++) {
 
         //only switch pages if the page is not in memory
-        if (pageInMemory(pageStream[i], pageFrames.back(), numPages)) {
-            displayPageFrame(pageFrames.back(), pageStream[i], numPages);
+        if (pageInMemory(pageStream[i], pageFrames->back(), numPages)) {
+            displayPageFrame(pageFrames->back(), pageStream[i], numPages);
 
             continue;
         }
 
 
-        int idx = findEmptySlot(pageFrames.back(), numPages);
+        int idx = findEmptySlot(pageFrames->back(), numPages);
         if (idx >= 0) {
-            pageFrames.back()->row[idx] = pageStream[i];
+            pageFrames->back()->row[idx] = pageStream[i];
+            pageFaults++;
 
         }
         else {
            
-            int frameToSwitch = determineFurthestPage(pageStream, pageFrames.back(), i, PAGE_STREAM_SIZE, numPages);
-            pageFrames.back()->row[frameToSwitch] = pageStream[i];
-
+            int frameToSwitch = determineFurthestPage(pageStream, pageFrames->back(), i, PAGE_STREAM_SIZE, numPages);
+            pageFrames->back()->row[frameToSwitch] = pageStream[i];
+            pageFaults++;
 
         }
       
         std::shared_ptr<Row> newRow = std::shared_ptr<Row>(new Row(numPages));
         for (int i = 0; i < numPages; i++) {
-            newRow->row[i] = pageFrames.back()->row[i];
+            newRow->row[i] = pageFrames->back()->row[i];
         }
-        pageFrames.push_back(newRow);
+        pageFrames->push_back(newRow);
      
-        displayPageFrame(pageFrames.back(), pageStream[i], numPages);
+        displayPageFrame(pageFrames->back(), pageStream[i], numPages);
       
     }
 
     std::cout << "Number of page faults for Belady: " << pageFaults;
-    pageFrames.clear();
 
 
     return 0;
 }
-
+//finds the furthest page in the incoming page stream and swaps it out
 int determineFurthestPage(unsigned int pageStream[], std::shared_ptr<Row>& activePages, int pageStreamStart, int pageStreamLength, int activePagesLength)
 {
     int furthestPage = -1;
@@ -126,6 +129,36 @@ int determineFurthestPage(unsigned int pageStream[], std::shared_ptr<Row>& activ
     }
     return greatestPageIdx;
 }
+
+//finds the given page which has been added to the pageFrames first
+int findFIFOPage(std::list<std::shared_ptr<Row>>* pageFrames, int pageStreamLength, int activePagesLength)
+{
+
+    int greatestDistance = -1;
+    int oldestPageIndex = -1;
+    int count = 0;
+
+    std::shared_ptr<Row> top = pageFrames->back();
+    for (int i = 0; i < activePagesLength; i++) {
+        int currentPage = top->row[i];
+        int dist = findPageInProcessed(pageFrames, currentPage, activePagesLength);
+        if (dist == greatestDistance) {
+            //set to new distance
+            greatestDistance = dist;
+            oldestPageIndex = i;
+        }
+        else if (dist > greatestDistance) {
+            greatestDistance = dist;
+            oldestPageIndex = i;
+        }
+
+    }
+
+   
+    return oldestPageIndex;
+    
+}
+
 
 void displayPageFrame(std::shared_ptr<Row>& currRow, int page, int rowLength){
 
@@ -166,5 +199,20 @@ bool pageInMemory(int page , std::shared_ptr<Row>& row, int length)
         }
     }
     return false;
+}
+
+int findPageInProcessed(std::list<std::shared_ptr<Row>>* pFrames, int page, int rowSize)
+{
+    int dist = 0;
+    for (auto j = pFrames->cend(); j != pFrames->cbegin(); --j) {
+        
+        for (int i = 0; i < rowSize; i++) {
+            if (page == (*j)->row[i]) {
+                return dist;
+            }
+        }
+        dist++;
+    }
+    return -1;
 }
 
