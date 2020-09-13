@@ -46,7 +46,7 @@ int main() {
 		catch (...) {
 			isValid = false;
 		}
-	} while (!isValid && numPages < 2 || numPages > 7);
+	} while (!isValid || numPages < 2 || numPages > 7);
 
 	//create allocate enough space in the array for 
 	//for each page to be run in the array
@@ -280,7 +280,7 @@ int findFIFOPage(std::vector<std::shared_ptr<Row>>& pageFrames, int activePagesL
 
 int findLFUPage(std::map<int, int> m, std::shared_ptr<Row>& row, int rowLength)
 {
-	int leastUses = INT_MAX;
+	int leastUses = INT8_MAX;
 	int leastUsedIdx = -1;
 	for (int i = 0; i < rowLength; i++) {
 		int frame = row->row[i];
